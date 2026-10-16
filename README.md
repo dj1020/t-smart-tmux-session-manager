@@ -35,7 +35,7 @@ Use the package manager of your OS if you are not on macOS.
 Add the following line to your `tmux.conf` file:
 
 ```sh
-set -g @plugin 'joshmedeski/t-smart-tmux-session-manager'
+set -g @plugin 'dj1020/t-smart-tmux-session-manager#feature/herdr-workspace-tabs'
 ```
 
 **Note:** tpm recommends you list your plugins and then run tpm at the very bottom of your `tmux.conf`.
