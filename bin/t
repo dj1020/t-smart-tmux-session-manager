@@ -16,10 +16,10 @@ show_help() {
 	printf '  t {name|path}      Resolve a zoxide name or local path in the initial mode\n'
 	printf '  t -h | --help      Show help\n\n'
 	printf '  TMUX set: locked Tmux Mode; <prefix>+%s opens the popup\n' "$bind"
-	printf '  Otherwise: Herdr Mode (stub), ctrl-g switches to/from Tmux Mode\n'
+	printf '  Otherwise: Herdr Mode, ctrl-g switches to/from Tmux Mode\n'
 	printf '  tab/shift-tab navigate; mode switching resets the query and cursor\n'
-	printf '  Herdr stub only previews commands; no Herdr calls or server startup\n'
-	printf '  Direct input skips fzf; outside tmux it only previews a stub command\n'
+	printf '  Herdr uses default session; workspace focus affects all its clients\n'
+	printf '  Direct input skips fzf; Herdr resolves workspace names before directories\n'
 	printf '  Repository cloning is not supported\n\n'
 }
 
@@ -39,20 +39,23 @@ load_backend() {
 
 open_input() {
 	local item
+	if [[ $MODE == herdr ]]; then open_workspace_input "$1"; return $?; fi
 	if ! item=$(resolve_input "$1"); then
-		if [[ $MODE == tmux ]]; then
-			printf 'No directory found.\n'
-			return 1
-		fi
-		item=$1
+		printf 'No directory found.\n'
+		return 1
 	fi
 	open_selection "$item"
 }
 
 run_picker() {
-	local output key item
+	local output key item status
 	while true; do
-		output=$(show_picker) || return 0
+		output=$(show_picker)
+		status=$?
+		if [[ $status != 0 ]]; then
+			[[ $status == 130 || $status == 1 && -z $output ]] && return 0
+			return "$status"
+		fi
 		key=''; item=$output
 		if [[ $MODE_LOCKED == false ]]; then
 			key=${output%%$'\n'*}
@@ -64,6 +67,7 @@ run_picker() {
 			continue
 		fi
 		[[ -n $item ]] || return 0
+		[[ $item != '———' && $item != separator$'\t'* ]] || continue
 		open_selection "$item"
 		return $?
 	done

@@ -75,7 +75,12 @@ if [[ ${T_TEST_STUB:-} == 1 ]]; then
 			;;
 		esac
 		;;
-	herdr) printf 'ERROR: real Herdr access forbidden\n' >&2; exit 99 ;;
+	herdr)
+		case ${*:3} in
+		'status server --json') printf '{"status":"running"}\n' ;;
+		'workspace list') printf '{"result":{"type":"workspace_list","workspaces":[]}}\n' ;;
+		*) exit 99 ;;
+		esac ;;
 	esac
 	exit 0
 fi
@@ -114,7 +119,7 @@ run_t() {
 		T_SESSION_NAME_INCLUDE_PARENT="$PARENT" T_FZF_BORDER_LABEL="$BORDER" \
 		FZF_TMUX_OPTS="$POPUP" bash "$TARGET" "$@" \
 		> "$TEST_DIR/out" 2> "$TEST_DIR/err" || status=$?
-	if rg -q '^herdr|git .*clone' "$TEST_DIR/calls"; then
+	if rg -q '^herdr .*<(create|focus|attach|server)>$|git .*clone' "$TEST_DIR/calls"; then
 		printf 'FAIL: forbidden external call in %s\n' "$TEST_DIR" >&2; exit 1
 	fi
 }
@@ -141,7 +146,7 @@ contains "$TEST_DIR/calls" 'tmux switch-client <-t> <project>'
 absent "$TEST_DIR/calls" 'new-session'; ok 'home expansion and existing session'
 
 reset_case; SELECTION="$SANDBOX/home/project"; : > "$SELECTION/.t"; run_t
-contains "$TEST_DIR/calls" "<-c> <$SELECTION> <$SELECTION/.t>"; ok 'startup script only on new session'
+absent "$TEST_DIR/calls" "\.t>"; ok 'startup scripts are ignored'
 
 reset_case; run_t known
 contains "$TEST_DIR/calls" 'tmux switch-client <-t> <project>'
@@ -209,37 +214,6 @@ absent "$TEST_DIR/args.1" 'ctrl-g|ctrl-s|ctrl-x|ctrl-f'
 contains "$TEST_DIR/args.1" 'Tmux Mode'
 contains "$TEST_DIR/args.1" 'tab:down,btab:up'; ok 'locked tmux mode and retained navigation'
 
-reset_case; INSIDE=; SELECTION='[示意 workspace] demo'; run_t
-contains "$TEST_DIR/list.1" '[示意 workspace] demo'
-[[ $(< "$TEST_DIR/list.1") == $'[示意 workspace] demo\n———\n~/project\n~/other' ]] || fail 'stub ordering'
-contains "$TEST_DIR/args.1" 'Herdr Mode'; contains "$TEST_DIR/args.1" '--expect=ctrl-g'
-contains "$TEST_DIR/out" 'herdr workspace focus <workspace-id>'
-contains "$TEST_DIR/out" '未執行'; absent "$TEST_DIR/calls" '^tmux|zoxide add'; ok 'default stub, illustrative workspace preview'
-
-reset_case; INSIDE=; printf 'ctrl-g\n' > "$TEST_DIR/action.1"
-printf 'ctrl-g\n' > "$TEST_DIR/action.2"; run_t
-contains "$TEST_DIR/args.1" 'Herdr Mode'; contains "$TEST_DIR/args.2" 'Tmux Mode'
-contains "$TEST_DIR/args.3" 'Herdr Mode'
-contains "$TEST_DIR/args.1" 'label:magenta:bold:reverse,border:magenta'
-contains "$TEST_DIR/args.2" 'label:blue:bold:reverse,border:blue'
-contains "$TEST_DIR/list.2" 'newer'; absent "$TEST_DIR/list.3" 'newer'
-[[ $(< "$TEST_DIR/args.1") == "$(< "$TEST_DIR/args.3")" ]] || fail 'stale backend settings'
-[[ $(< "$TEST_DIR/args.1") != "$(< "$TEST_DIR/args.2")" ]] || fail 'identical mode colors'
-contains "$TEST_DIR/out" '未執行'; absent "$TEST_DIR/calls" '^tmux (attach|switch-client|new-session)'; ok 'two-way mode lifecycle and action ownership'
-
-reset_case; INSIDE=; SELECTION='~/project'; run_t
-contains "$TEST_DIR/out" "herdr workspace create --cwd $SANDBOX/home/project"
-contains "$TEST_DIR/out" 'herdr workspace focus <workspace-id>'
-contains "$TEST_DIR/out" 'create 結果'
-contains "$TEST_DIR/out" 'herdr # 開啟／附加 Herdr TUI'
-contains "$TEST_DIR/out" '未執行'; absent "$TEST_DIR/calls" '^tmux|zoxide add'; ok 'stub create, focus and open preview'
-
-for arg in known "$SANDBOX/home/other" demo; do
-	reset_case; INSIDE=; run_t "$arg"
-	contains "$TEST_DIR/out" 'herdr workspace'; contains "$TEST_DIR/out" '未執行'
-	absent "$TEST_DIR/calls" '^tmux|^fzf|zoxide add'; ok "stub direct input: $arg"
-done
-
 for flag in -r --repo; do
 	for context in socket ''; do
 		for url in '' example.git; do
@@ -252,12 +226,8 @@ for flag in -r --repo; do
 	done
 done
 
-reset_case; INSIDE=; printf 'cancel\n' > "$TEST_DIR/action.1"; run_t
-[[ ! -s $TEST_DIR/out ]] || fail 'stub cancellation output'
-absent "$TEST_DIR/calls" '^tmux|zoxide add'; ok 'quiet stub cancellation'
-
 reset_case; run_t --help
-contains "$TEST_DIR/out" 'ctrl-g'; contains "$TEST_DIR/out" 'stub'
+contains "$TEST_DIR/out" 'ctrl-g'; contains "$TEST_DIR/out" 'default session'
 absent "$TEST_DIR/out" 'ctrl-s|ctrl-x|ctrl-f|T_REPOS_DIR'
 ok 'help documents approved scope'
 
@@ -276,19 +246,26 @@ ok 'cancel after mode switch'
 
 reset_case; SELECTION="$SANDBOX/home/space dir"; mkdir -p "$SELECTION"
 : > "$SELECTION/.t"; USE_GIT=true; GIT_ROOT="$SELECTION"; run_t "$SELECTION"
-contains "$TEST_DIR/calls" "<-s> <space_dir> <-c> <$SELECTION> <$SELECTION/.t>"
+contains "$TEST_DIR/calls" "<-s> <space_dir> <-c> <$SELECTION>"
+absent "$TEST_DIR/calls" "\.t>"
 ok 'Git path and startup script containing spaces'
-
-reset_case; INSIDE=; SELECTION="$SANDBOX/home/space dir"; run_t "$SELECTION"
-contains "$TEST_DIR/out" 'space\ dir'
-contains "$TEST_DIR/out" '未執行'; absent "$TEST_DIR/calls" '^tmux|zoxide add'
-ok 'stub shell-escaped path and no startup execution'
 
 for flag in -h --help; do
 	reset_case; INSIDE=; run_t "$flag"
-	contains "$TEST_DIR/out" 'stub'; absent "$TEST_DIR/calls" '^tmux|^fzf'
+	contains "$TEST_DIR/out" 'Herdr Mode'; absent "$TEST_DIR/calls" '^tmux|^fzf'
 	ok "outside-tmux help ($flag)"
 done
+
+reset_case; INSIDE=; SELECTION=
+printf 'ctrl-g\n' > "$TEST_DIR/action.1"
+printf 'ctrl-g\n' > "$TEST_DIR/action.2"
+printf 'cancel\n' > "$TEST_DIR/action.3"; run_t
+contains "$TEST_DIR/args.1" 'Herdr Mode'; contains "$TEST_DIR/args.2" 'Tmux Mode'
+contains "$TEST_DIR/args.3" 'Herdr Mode'
+contains "$TEST_DIR/args.1" 'label:magenta:bold:reverse,border:magenta'
+contains "$TEST_DIR/args.2" 'label:blue:bold:reverse,border:blue'
+absent "$TEST_DIR/args.2" 'with-nth'
+ok 'two-way mode switch restores backend settings'
 
 contains "$ROOT/README.md" 'ctrl-g'
 absent "$ROOT/README.md" 'ctrl-s|ctrl-x|ctrl-f|T_REPOS_DIR|find-binding'

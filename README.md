@@ -111,28 +111,26 @@ Or you can replace the prompt with anything you'd like.
 
 ## How to use
 
-- **本輪範圍**：真實 tmux session 後端＋Herdr stub；不包含 tmux window／Herdr tab。
-- **Herdr stub**：只顯示示意 workspace 與預期命令，明示「未執行」；不查詢 Herdr、
-  不啟動服務、不建立或聚焦 workspace。`<workspace-id>` 是佔位符，不是真實 ID。
-  目錄預覽依序列出 create、focus、開啟／附加 Herdr；focus 的 ID 須取自 create 結果。
-  前景 TUI 指令放最後，避免阻塞 focus；workspace 選取也會預覽 focus 與開啟 Herdr。
+- **範圍**：tmux session 與真實 Herdr workspace；不包含 window／tab。
+- **依賴**：Herdr Mode 需要 Herdr CLI 與 jq；已以 Herdr `0.9.4` 驗證。
 
-| 入口 | 用途 | `$TMUX` 非空 | `$TMUX` 為空 |
-|---|---|---|---|
-| `t` | 互動選單 | 鎖定 Tmux Mode，使用 fzf-tmux popup | 初始 Herdr Mode (stub)，使用一般 fzf，可切至真實 Tmux Mode |
-| `t {name}`／`t {path}` | 直接輸入；先查 zoxide，再查本地路徑 | 沿用 tmux session 查找、建立與切換 | 目錄預覽 create／focus／開啟 Herdr；未解析名稱預覽 focus／開啟 Herdr |
-| `<prefix>+T` | 預設 plugin 綁定 | 開啟 tmux 選單 | 不適用 |
-| `t -h`／`t --help` | 說明 | 顯示用法 | 顯示用法 |
+| 入口 | `$TMUX` 非空 | `$TMUX` 為空 |
+|---|---|---|
+| `t` | 鎖定 Tmux Mode，使用 fzf-tmux | Herdr Mode，使用一般 fzf，可用 ctrl-g 切換 tmux |
+| `t {name}`／`t {path}` | 先查 zoxide，再查本地目錄 | 先精確比對 workspace 名稱，再查 zoxide、本地目錄 |
+| `t -h`／`t --help` | 顯示說明 | 顯示說明 |
 
-- **模式判斷**：兩種入口都以 `$TMUX` 是否非空判斷初始模式；`HERDR_ENV=1`
-  不會覆蓋此判斷。其他地方有 tmux server 不代表目前在 tmux 內。
-- **選單**：session／示意 workspace 在目錄前；Tmux Mode 保留來源設定與 MRU 排序。
-  標題明示目前模式；Tmux 使用藍色反白標題，Herdr stub 使用洋紅色反白標題。
-- **選取後動作**：Tmux Mode 沿用 session 命名、Git root／worktree、`.t`、attach／switch；
-  Herdr Mode 僅預覽。不宣稱一般 fzf 是 Herdr 原生 popup。
-- **直接輸入**：不開 fzf，因此沒有當次切換鍵；tmux 名稱仍遵循既有 zoxide／路徑解析。
-- **已移除**：舊三個來源重載快捷鍵及 repository clone 功能；`-r`／`--repo`
-  明確報告不支援並以非零狀態退出，不再提供 clone 目的地設定。
+- **模式**：非空 `$TMUX` 優先於 `HERDR_ENV`；標題使用 tmux 藍色／Herdr 洋紅色反白。
+- **Herdr**：所有指令固定操作 `default`；workspace 先於目錄顯示，保留來源與 ID。
+  目錄沿用下方命名設定，精確比對 label；同名多筆取第一個，不改既有工作目錄。
+- **進入畫面**：focus 成功後，`HERDR_ENV=1` 不 attach，其餘 attach default。
+  公開 CLI focus 會切換同 session 的所有 client；不同 session 可能有相同 workspace ID。
+- **冷啟動**：明確未運行才背景啟動，固定等待 0.5 秒後查一次清單；已運行直接查詢。
+  固定延遲不保證就緒；失敗報錯退出、不重試、不切 tmux、不停止 server。
+  取消選單保留已啟動的 server；CLI 命令本身沒有額外逾時保護。
+- **直接輸入**：不開 fzf；Herdr 查無 workspace／目錄就報錯，不以目前目錄建立。
+- **已移除**：repository clone、舊來源重載快捷鍵與 `.t` 啟動腳本功能。
+  不檢查或執行 `.t`，也不刪除使用者檔案；`-r`／`--repo` 非零退出。
 
 ### Key Bindings
 
@@ -239,7 +237,7 @@ set -g @t-bind "none" # unbind default
 ### Change default fzf results
 
 - 此設定只影響 Tmux Mode：server 運行時預設列 session 與 zoxide；
-  server 未運行時只列 zoxide。Herdr stub 不讀 tmux 設定。
+  server 未運行時只列 zoxide。Herdr Mode 不讀 tmux 設定。
 - 在 `tmux.conf` 設定 `@t-fzf-default-results`：
 
 ```sh
@@ -287,27 +285,6 @@ set -Ux T_FZF_BORDER_LABEL " Your Custom Label "
 
 Interested in learning more about how this script came to be? Check out [Smart tmux sessions with zoxide and fzf](https://www.joshmedeski.com/posts/smart-tmux-sessions-with-zoxide-and-fzf/).
 ]
-
-## Startup script
-
-You can run a startup script when you create a new session. This is useful for running a command when you create a new session, like starting a dev server or automatically opening neovim to begin editing a file.
-
-This works by adding a `.t` file to your desired directory. Here is a quick script for bootstrapping that file:
-
-```sh
-touch .t && chmod +x .t && echo -e '#!/usr/bin/env bash\n' > .t && nvim .t
-```
-
-I like opening Neovim and the find file Telescope prompt to quickly find a file to edit. Here is an example of what I put in many of my projects:
-
-```sh
-#!/usr/bin/env bash
-nvim -c 'Telescope find_files'
-```
-
-- `.t` 僅在 Tmux Mode 建立新 session 時執行；既有 session 不重跑，Herdr stub 不執行。
-
-This feature is in early development so please feel free to give feedback if you have ideas for how to improve on it.
 
 ## Bonus: macOS keyboard shortcut
 

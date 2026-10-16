@@ -48,39 +48,9 @@ picker_settings() {
 	if [[ $T_RUNTYPE == attached ]]; then PICKER_COMMAND=fzf-tmux; fi
 }
 
-get_session_name() {
-	local result=$1 git_root basename relative_path git_common
-	if [[ $result != /* ]]; then
-		printf '%s\n' "$result"
-	elif [[ $T_SESSION_USE_GIT_ROOT == true ]]; then
-		if git_root=$(git -C "$result" rev-parse --show-toplevel 2>/dev/null); then
-			basename=$(basename "$git_root")
-			relative_path=${result#"$git_root"}
-			if git_common=$(git -C "$result" rev-parse --git-common-dir 2>/dev/null) \
-				&& [[ ! $git_common =~ ^(\.\./)*\.git$ ]]; then
-				git_common=${git_common%/.git}
-				git_common=${git_common%/.bare}
-				basename=$(basename "$git_common")
-				relative_path=${result#"$git_common"}
-			fi
-			printf '%s\n' "$basename$relative_path" | tr ' .:' '_'
-		else
-			basename "$result" | tr ' .:' '_'
-		fi
-	elif [[ $T_SESSION_NAME_INCLUDE_PARENT == true ]]; then
-		printf '%s\n' "$result" | tr ' .:' '_' | awk -F '/' '{print $(NF-1)"/"$NF}'
-	else
-		basename "$result" | tr ' .:' '_'
-	fi
-}
-
 create_session() {
 	local session=$1 directory=$2
-	if [[ -e $directory/.t ]]; then
-		tmux new-session -d -s "$session" -c "$directory" "$directory/.t"
-	else
-		tmux new-session -d -s "$session" -c "$directory"
-	fi
+	tmux new-session -d -s "$session" -c "$directory"
 }
 
 connect_session() {
