@@ -111,111 +111,40 @@ Or you can replace the prompt with anything you'd like.
 
 ## How to use
 
-```sh
-  Run interactive mode
-      t
-        ctrl-s list only tmux sessions
-        ctrl-x list only zoxide results
-        ctrl-f list results from the find command
+- **本輪範圍**：真實 tmux session 後端＋Herdr stub；不包含 tmux window／Herdr tab。
+- **Herdr stub**：只顯示示意 workspace 與預期命令，明示「未執行」；不查詢 Herdr、
+  不啟動服務、不建立或聚焦 workspace。`<workspace-id>` 是佔位符，不是真實 ID。
+  目錄預覽依序列出 create、focus、開啟／附加 Herdr；focus 的 ID 須取自 create 結果。
+  前景 TUI 指令放最後，避免阻塞 focus；workspace 選取也會預覽 focus 與開啟 Herdr。
 
-  Go to session (matches tmux session, zoxide result, or directory)
-      t {name}
+| 入口 | 用途 | `$TMUX` 非空 | `$TMUX` 為空 |
+|---|---|---|---|
+| `t` | 互動選單 | 鎖定 Tmux Mode，使用 fzf-tmux popup | 初始 Herdr Mode (stub)，使用一般 fzf，可切至真實 Tmux Mode |
+| `t {name}`／`t {path}` | 直接輸入；先查 zoxide，再查本地路徑 | 沿用 tmux session 查找、建立與切換 | 目錄預覽 create／focus／開啟 Herdr；未解析名稱預覽 focus／開啟 Herdr |
+| `<prefix>+T` | 預設 plugin 綁定 | 開啟 tmux 選單 | 不適用 |
+| `t -h`／`t --help` | 說明 | 顯示用法 | 顯示用法 |
 
-  Open popup (while in tmux)
-      <prefix>+T
-        ctrl-s list only tmux sessions
-        ctrl-x list only zoxide results
-        ctrl-f list results from the find command
-
-  Show help
-      t -h
-      t --help
-```
-
-By default, this plugin is bound to `<prefix>+T` which triggers a fzf-tmux popup that display zoxide results. Type the result you want and when you hit enter it will create a tmux session and connect to it or, if the sessions already exists, switch to it.
-
-If you are not in tmux, you can simply run `t` to start the interactive script, or call `t {name}` to jump directly to a session of your choosing.
+- **模式判斷**：兩種入口都以 `$TMUX` 是否非空判斷初始模式；`HERDR_ENV=1`
+  不會覆蓋此判斷。其他地方有 tmux server 不代表目前在 tmux 內。
+- **選單**：session／示意 workspace 在目錄前；Tmux Mode 保留來源設定與 MRU 排序。
+  標題明示目前模式；Tmux 使用藍色反白標題，Herdr stub 使用洋紅色反白標題。
+- **選取後動作**：Tmux Mode 沿用 session 命名、Git root／worktree、`.t`、attach／switch；
+  Herdr Mode 僅預覽。不宣稱一般 fzf 是 Herdr 原生 popup。
+- **直接輸入**：不開 fzf，因此沒有當次切換鍵；tmux 名稱仍遵循既有 zoxide／路徑解析。
+- **已移除**：舊三個來源重載快捷鍵及 repository clone 功能；`-r`／`--repo`
+  明確報告不支援並以非零狀態退出，不再提供 clone 目的地設定。
 
 ### Key Bindings
 
-- `ctrl-s` list only tmux sessions
-- `ctrl-x` list only zoxide results
-- `ctrl-f` find by directory
+| 鍵位 | 行為 |
+|---|---|
+| `ctrl-g` | 僅非 tmux 的互動選單可來回切換 Herdr／Tmux Mode |
+| `tab`／`shift-tab` | 在 fzf 結果中向下／向上移動 |
+| `Enter` | 將選項交由當下後端處理 |
+| `Esc`／`ctrl-c` | 取消並安靜結束，不執行選取動作 |
 
-## Extra features
-
-### Cloning repositories
-
-You can quickly clone a repository to your preferred directory by using the `t` command combined with the `-r` flag (or `--repo`).
-
-First, you have to set the `T_REPOS_DIR` variable in your shell environment. Make sure to set it where you want your repositories cloned.
-
-<details>
-<summary>bash</summary>
-
-Add the following line to `~/.bashrc`
-
-```sh
-export T_REPOS_DIR="~/repos"
-```
-
-</details>
-
-<details>
-<summary>zsh</summary>
-
-Add the following line to `~/.zshrc`
-
-```sh
-export T_REPOS_DIR="~/repos"
-```
-
-</details>
-
-<details>
-<summary>fish</summary>
-
-Add the following line to `~/.config/fish/conf.d/t.fish`
-
-```fish
-set -Ux T_REPOS_DIR ~/repos
-```
-
-</details>
-
-In order to use the feature, simply run:
-
-```sh
-t -r https://github.com/joshmedeski/t-smart-tmux-session-manager.git
-```
-
-**Note:** it has to be a valid git remote url (ending in `.git`) or order to work.
-
-I prefer to copy the repository URL to my clipboard and run the following command on macOS.
-
-<details>
-<summary>bash/zsh</summary>
-
-```sh
-t -r $(pbpaste)
-```
-
-</details>
-
-<details>
-<summary>fish</summary>
-
-```sh
-t -r (pbpaste)
-```
-
-</details>
-
-If you want to overwrite the directory to clone to, you can overwrite the `T_REPOS_DIR` variable before running the command:
-
-```sh
-T_REPOS_DIR=~/code t --repo https://github.com/joshmedeski/tmux-list.git
-```
+- 切換模式會結束並重開 fzf；搜尋文字與游標不保留，畫面可能閃動。
+- 選任意目錄請使用 zoxide 清單或 `t {path}`；不再提供選單內臨時目錄搜尋。
 
 ## How to customize
 
@@ -309,7 +238,9 @@ set -g @t-bind "none" # unbind default
 
 ### Change default fzf results
 
-By default, t will display tmux sessions and zoxide results by default. You can change this by setting `@t-fzf-default-results` variable to your `tmux.conf`:
+- 此設定只影響 Tmux Mode：server 運行時預設列 session 與 zoxide；
+  server 未運行時只列 zoxide。Herdr stub 不讀 tmux 設定。
+- 在 `tmux.conf` 設定 `@t-fzf-default-results`：
 
 ```sh
 set -g @t-fzf-default-results 'sessions' # show tmux sessions by default
@@ -318,24 +249,6 @@ set -g @t-fzf-default-results 'sessions' # show tmux sessions by default
 ```sh
 set -g @t-fzf-default-results 'zoxide' # show zoxide results by default
 ```
-
-### Custom find command
-
-By default, the find key binding (`^f`) will run a simple `find` command to search for directories in and around your home directory.
-
-```sh
-find ~ -maxdepth 3 -type d
-```
-
-You can customize this command by setting `@t-find-binding` variable to your `tmux.conf`:
-
-In this example, I'm setting the prompt with a custom [Nerd Font icon](https://www.nerdfonts.com/) and using [fd](https://github.com/sharkdp/fd) to search directories (including hidden ones) up to two levels deep from my home directory.
-
-```sh
-set -g @t-fzf-find-binding 'ctrl-f:change-prompt(  )+reload(fd -H -d 2 -t d . ~)'
-```
-
-Run `man fzf` to learn more about how to customize key bindings with fzf.
 
 ### FZF_TMUX_OPTS
 
@@ -355,7 +268,8 @@ Run `man fzf-tmux` to learn more about the available options.
 
 ### Custom Border Label
 
-If you want to customize the fzf popup border label, you can add `T_FZF_BORDER_LABEL` to your shell variable
+- `T_FZF_BORDER_LABEL` 是兩模式共用的自訂標題前綴；目前模式名稱仍會附加在後。
+- 設定方式：
 
 ```bash
 # ~/.bashrc or ~/.zshrc
@@ -391,7 +305,7 @@ I like opening Neovim and the find file Telescope prompt to quickly find a file 
 nvim -c 'Telescope find_files'
 ```
 
-So, when you open any project that detects a `.t` it will automatically run that script when a session is created.
+- `.t` 僅在 Tmux Mode 建立新 session 時執行；既有 session 不重跑，Herdr stub 不執行。
 
 This feature is in early development so please feel free to give feedback if you have ideas for how to improve on it.
 
